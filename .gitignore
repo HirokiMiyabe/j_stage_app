@@ -14,3 +14,55 @@ Thumbs.db
 
 # Streamlit cache
 .streamlit/
+
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# データ類（容量が大きい・秘匿性あり）
+data/
+**/data/
+*.csv
+*.xlsx
+*.json
+*.jsonl
+*.zip
+*.txt
+*.gml
+*.graphml
+*.pptx
+*.ptx
+*.xlm
+*.css
+*.css
+*.js
+*.woff
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.gitignore
+*.pdf
+*.docx
+*.doc
+*.ppt
+*.mp4
+*.avi
+*.mov
+
+
+# RStudio/R関連の無視ファイル（推奨設定）
+
+# RStudioのユーザー固有の一時データ
+.Rproj.user/
+
+# プロジェクトファイル自体
+*.Rproj
+
+# Rのセッションデータ
+.RData
+.Rhistory
+
+# OS系
+.DS_Store
+
