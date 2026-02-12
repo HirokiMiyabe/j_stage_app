@@ -88,11 +88,26 @@ def to_csv_ready(df: pl.DataFrame, sep: str = ";") -> pl.DataFrame:
 # ===== sidebar =====
 with st.sidebar:
     st.header("検索条件(AND条件)")
-    target_word = st.text_input("検索語", value="因果")
-    material = st.text_input("雑誌名（material）")
-    author = st.text_input("著者名（author）")
+    target_word = st.text_input(
+        "検索語",
+        help="半角スペースで区切るとAND検索になります。")
+    
+    material = st.text_input(
+        "雑誌名（material）",
+        help="完全一致のため、正確に入力してください。(j-stage上の表記の貼り付け推奨）"
+    )
+    author = st.text_input(
+        "著者名（author）",
+        help="first nameとlast nameの両方は半角スペースで区切ってください。"
+    )
     affil = st.text_input("所属（affil）")
-    issn = st.text_input("ISSN（print / online どちらでも）")
+    
+    issn = st.text_input(
+        "ISSN",
+        placeholder="例: 1234-5678",
+        help="print版でもonline版のどちらか"
+    )
+    
     cdjournal = st.text_input("cdjournal（J-STAGE内部コード）")
     st.divider()
     
@@ -100,7 +115,7 @@ with st.sidebar:
     year = st.number_input("開始年 (pubyearfrom)", min_value=0, max_value=3000, value=1950, step=1)
     field = st.selectbox("検索フィールド", ["article", "abst", "text"], index=0)
     max_records = st.number_input(
-        "最大取得件数（暴走防止）",
+        "最大取得件数（暴走防止策）",
         min_value=1,
         max_value=500000,
         value=20000,
@@ -138,9 +153,9 @@ if run:
     q_issn = issn.strip() or None
     q_cdjournal = cdjournal.strip() or None
 
-    # ★ 全条件が空はNG（yearだけ等の暴走防止）
+    # 全条件が空はNG（yearだけ等の暴走防止）
     if all(v is None for v in [q_target, q_material, q_author, q_affil, q_issn, q_cdjournal]):
-        st.error("検索条件が空です。検索語または material/author/affil/issn/cdjournal のいずれかを入力してください。")
+        st.error("検索条件が空です。検索語・雑誌名・著者名・所属・ISSN・cdjournal のいずれかを入力してください。")
         st.stop()
 
     # 表示用メッセージ（検索語が無い場合に備える）
@@ -152,7 +167,7 @@ if run:
         year=year,
         field=field,
         max_records=max_records,
-        sleep=float(sleep),            # ← ★ sliderの値を反映（いまは 1.0 固定になってた）
+        sleep=float(sleep),            
         material=q_material,
         author=q_author,
         affil=q_affil,
@@ -161,7 +176,7 @@ if run:
     )
 
     if df.is_empty():
-        st.warning("0件でした。条件を変えて試してください。")
+        st.warning("0件でした。条件を変えて試してください。m(・v・)m")
         st.stop()
 
     # ファイル名ベース（検索語が空でもOKにする）
@@ -169,7 +184,7 @@ if run:
     safe_word = "".join(ch if ch.isalnum() else "_" for ch in (q_target or "no_keyword"))
     base_name = f"jstage_{safe_word}_{field}_{int(year)}_{ts}"
 
-    # ★ 保存（slider操作などで rerun しても結果が残る）
+    # 保存（slider操作などで rerun しても結果が残る）
     st.session_state.df = df
     st.session_state.total = total
     st.session_state.base_name = base_name
