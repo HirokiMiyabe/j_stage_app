@@ -114,6 +114,8 @@ with st.sidebar:
     
     year = st.number_input("開始年 (pubyearfrom)", min_value=0, max_value=3000, value=1950, step=1)
     field = st.selectbox("検索フィールド", ["article", "abst", "text"], index=0)
+    st.caption("※ article: タイトル, abst: アブストラクト, text: 全文")
+    
     max_records = st.number_input(
         "最大取得件数（暴走防止策）",
         min_value=1,
