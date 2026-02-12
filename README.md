@@ -116,7 +116,7 @@ streamlit run app.py
 
 ------------------------------------------------------------------------
 
-## 🧠 Architecture
+## Architecture
 
 app.py \# Streamlit GUI\
 jstage_fetcher.py \# API fetch logic\
@@ -150,9 +150,9 @@ See the [LICENSE file](https://github.com/HirokiMiyabe/j_stage_app/blob/main/LIC
 
 ## 👤 Author
 
-- Name: Hiroki Miyabe\
-- Affiliation: The Univeysity of Tokyo((2026– ))
-- CV: [researchmap] (https://researchmap.jp/mybhrk_ut_wsd)
+- Name: Hiroki Miyabe
+- Affiliation: The Univeysity of Tokyo(2026– )
+- CV: [researchmap](https://researchmap.jp/mybhrk_ut_wsd)
 
 ## Credits
 
