@@ -1,0 +1,9 @@
+streamlit
+altair
+numpy
+pandas
+polars
+pyarrow
+
+# j_staget を「独立パッケージ」として利用（開発時：隣に clone して editable install）
+-e ../j_staget
