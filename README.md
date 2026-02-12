@@ -4,7 +4,7 @@ A Streamlit-based GUI application for searching and analyzing articles
 using the J-STAGE Search API (service=3).
 
 🔗 Deployed App\
-(Replace this line with your Streamlit Cloud URL)
+Coming Soon
 
 ------------------------------------------------------------------------
 
@@ -143,15 +143,16 @@ It is not intended for bulk data harvesting.
 
 ## 📜 License
 
-MIT License (Recommended)
+This project is licensed under the MIT License.
+See the [LICENSE file](https://github.com/HirokiMiyabe/j_stage_app/blob/main/LICENSE) for details.
 
 ------------------------------------------------------------------------
 
 ## 👤 Author
 
-Hiroki Miyabe\
-(The Univeysity of Tokyo(2026 now)/ ORCID if desired)
-
+- Name: Hiroki Miyabe\
+- Affiliation: The Univeysity of Tokyo((2026– ))
+- CV: [researchmap] (https://researchmap.jp/mybhrk_ut_wsd)
 
 ## Credits
 
