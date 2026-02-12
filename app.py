@@ -429,7 +429,7 @@ else:
             "#B07AA1",  # purple
             "#FF9DA7",  # pink
             "#9C755F",  # brown
-            "#000000",  # ★ black（10番目）
+            "#000000",  # black（10番目）デフォだと灰色で見にくい
             "#BAB0AC",  # gray（予備）
             "#1F77B4",  # 予備
             "#FF7F0E",  # 予備
