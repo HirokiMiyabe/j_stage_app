@@ -6,7 +6,6 @@ venv/
 .env
 
 # data output
-data/*
 !data/.gitkeep
 
 # OS
