@@ -68,7 +68,7 @@ if not st.session_state.agreed:
 
 # ===== ページ設定 =====
 st.set_page_config(page_title="J-STAGE Search GUI", layout="wide")
-st.title("J-STAGE Search API GUI（service=3）")
+st.title("J-STAGET: J-STAGE Search API with GUI")
 
 
 def to_csv_ready(df: pl.DataFrame, sep: str = ";") -> pl.DataFrame:

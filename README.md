@@ -1,160 +1,156 @@
 # J-STAGE Search API GUI (service=3)
 
-A Streamlit-based GUI application for searching and analyzing articles
-using the J-STAGE Search API (service=3).
+J-STAGE Search API (service=3) を用いて、論文の検索と分析を行うための Streamlit ベースの GUI アプリケーションです。
 
-🔗 Deployed App\
-Coming Soon
+## 🔗 公開アプリ
+
+近日公開
 
 ------------------------------------------------------------------------
 
+## ⚠ 利用規約
 
-## ⚠ Terms of Use
-
-> ⚠️ **Important Notice (J-STAGE Terms of Use)**  
+> ⚠️ **重要事項（J-STAGE 利用規約）**  
 >  
-> This package is an **unofficial client** for the J-STAGE Search API (service=3).  
-> Before using this package, **you must read and agree to** the following documents:
+> このパッケージは、J-STAGE Search API (service=3) の **非公式クライアント** です。  
+> このパッケージを利用する前に、以下の文書を **必ず読み、同意してください**。  
 >  
-> - J-STAGE Terms And Policies:  
->   https://www.jstage.jst.go.jp/static/pages/TermsAndPolicies/ForIndividuals/-char/ja"
-> - J-STAGE WebAPI Terms And Policies:  
+> - J-STAGE 利用規約・ポリシー:  
+>   https://www.jstage.jst.go.jp/static/pages/TermsAndPolicies/ForIndividuals/-char/ja
+> - J-STAGE WebAPI 利用規約・ポリシー:  
 >   https://www.jstage.jst.go.jp/static/pages/WebAPI/-char/ja
-> - About J-STAGE Web API:  
+> - J-STAGE Web API について:  
 >   https://www.jstage.jst.go.jp/static/pages/JstageServices/TAB3/-char/ja
 >  
-> By using this package, **you acknowledge that you are solely responsible for complying with these terms**.  
-> The author of this package assumes **no responsibility or liability** for any damages, losses, or violations arising from its use.
-
-------------------------------------------------------------------------
-## 📌 Overview
-
-This application provides a graphical user interface (GUI) for querying
-the J-STAGE Search API (service=3) and performing exploratory analysis.
-
-Users can:
-
--   Search articles with multiple AND conditions
--   Filter by:
-    -   keyword
-    -   journal (material)
-    -   author
-    -   affiliation
-    -   ISSN
-    -   cdjournal (internal journal code)
--   Set start year
--   Limit maximum records
--   Adjust request interval (API load control)
--   Download results as:
-    -   CSV
-    -   JSON
-    -   Parquet
--   Visualize:
-    -   Journal distribution
-    -   Yearly publication trends
-    -   Top journal time series
+> このパッケージを利用することで、**これらの規約を遵守する責任が利用者自身にあることを認めたものとみなされます**。  
+> このパッケージの作者は、その利用によって生じたいかなる損害、損失、違反についても **責任を負いません**。
 
 ------------------------------------------------------------------------
 
+## 📌 概要
 
+このアプリケーションは、J-STAGE Search API (service=3) にクエリを送信し、探索的分析を行うためのグラフィカルユーザーインターフェース（GUI）を提供します。
 
-## 🚀 Deployment (Streamlit Cloud)
+できること:
 
-This repository is designed to run directly on Streamlit Community
-Cloud.
-
-### Python Version
-
-Specified in:
-
-runtime.txt
-(python 3.12)
-### Dependencies
-
-Defined in:
-
-requirements.txt
-
-Including:
-
--   streamlit
--   polars
--   altair
--   requests
--   lxml
--   j_staget (installed from GitHub)
+- 複数の AND 条件による論文検索
+- 以下の条件による絞り込み
+  - keyword
+  - journal (material)
+  - author
+  - affiliation
+  - ISSN
+  - cdjournal (internal journal code)
+- 開始年の指定
+- 最大取得件数の制限
+- リクエスト間隔の調整（API 負荷制御）
+- 結果のダウンロード
+  - CSV
+  - JSON
+  - Parquet
+- 可視化
+  - ジャーナル分布
+  - 年ごとの出版動向
+  - 上位ジャーナルの時系列
 
 ------------------------------------------------------------------------
 
-## 🖥 Local Development
+## 🚀 デプロイ（Streamlit Cloud）
 
-Clone the repository:
+このリポジトリは、Streamlit Community Cloud 上でそのまま実行できるように設計されています。
 
-``` bash
+### Python バージョン
+
+以下で指定しています:
+
+`runtime.txt`  
+(`python 3.12`)
+
+### 依存関係
+
+以下で定義しています:
+
+`requirements.txt`
+
+含まれる主なパッケージ:
+
+- `streamlit`
+- `polars`
+- `altair`
+- `requests`
+- `lxml`
+- `j_staget`（GitHub からインストール）
+
+------------------------------------------------------------------------
+
+## 🖥 ローカル開発
+
+リポジトリをクローンします:
+
+```bash
 git clone https://github.com/<YOUR_NAME>/J_STAGE_APP.git
 cd J_STAGE_APP
 ```
 
-Create virtual environment:
+仮想環境を作成します:
 
-``` bash
+```bash
 python -m venv .venv
 .venv\Scripts\activate  # Windows
 ```
 
-Install dependencies:
+依存関係をインストールします:
 
-``` bash
+```bash
 pip install -r requirements.txt
 ```
 
-Run:
+起動します:
 
-``` bash
+```bash
 streamlit run app.py
 ```
 
 ------------------------------------------------------------------------
 
-## Architecture
+## アーキテクチャ
 
-app.py \# Streamlit GUI\
-jstage_fetcher.py \# API fetch logic\
-requirements.txt\
-runtime.txt
+`app.py` # Streamlit GUI  
+`jstage_fetcher.py` # API 取得ロジック  
+`requirements.txt`  
+`runtime.txt`
 
-The API logic is separated from the UI for maintainability and
-reproducibility.
-
-------------------------------------------------------------------------
-
-## 📊 Research Purpose
-
-This tool is intended for:
-
--   Bibliometric exploration
--   Journal-level analysis
--   Longitudinal trend analysis
--   Academic research support
-
-It is not intended for bulk data harvesting.
+保守性と再現性を高めるため、API のロジックは UI から分離されています。
 
 ------------------------------------------------------------------------
 
-## 📜 License
+## 📊 研究目的
 
-This project is licensed under the MIT License.
-See the [LICENSE file](https://github.com/HirokiMiyabe/j_stage_app/blob/main/LICENSE) for details.
+このツールは、以下の用途を想定しています。
+
+- 書誌情報の探索
+- ジャーナル単位の分析
+- 長期的なトレンド分析
+- 学術研究の支援
+
+大量データの収集を目的としたものではありません。
 
 ------------------------------------------------------------------------
 
-## 👤 Author
+## 📜 ライセンス
 
-- Name: Hiroki Miyabe
-- Affiliation: The Univeysity of Tokyo(2026– )
+このプロジェクトは MIT License の下で提供されています。  
+詳細は [LICENSE ファイル](https://github.com/HirokiMiyabe/j_stage_app/blob/main/LICENSE) を参照してください。  
+
+------------------------------------------------------------------------
+
+## 👤 作者
+
+- 名前: Hiroki Miyabe
+- 所属: 東京大学（2026-）
 - CV: [researchmap](https://researchmap.jp/mybhrk_ut_wsd)
 
-## Credits
+## クレジット
 
-- Data source: [J-STAGE](https://www.jstage.jst.go.jp/browse/-char/ja)
-- Powered by [J-STAGE](https://www.jstage.jst.go.jp/browse/-char/ja)
+- 情報提供: [J-STAGE](https://www.jstage.jst.go.jp/browse/-char/ja)
+- 提供: [J-STAGE](https://www.jstage.jst.go.jp/browse/-char/ja)
