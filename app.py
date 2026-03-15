@@ -30,7 +30,7 @@ if not st.session_state.agreed:
             <li>
               <a href="https://www.jstage.jst.go.jp/static/pages/TermsAndPolicies/ForIndividuals/-char/ja"
                  target="_blank" rel="noopener noreferrer">
-                j-stage利用規約・ポリシー
+                J-STAGE利用規約・ポリシー
               </a>
             </li>
             <li>
@@ -87,7 +87,7 @@ def to_csv_ready(df: pl.DataFrame, sep: str = ";") -> pl.DataFrame:
 
 # ===== sidebar =====
 with st.sidebar:
-    st.header("検索条件(AND条件)")
+    st.header("検索条件")
     target_word = st.text_input(
         "検索語",
         help="半角スペースで区切るとAND検索になります。")
@@ -98,7 +98,7 @@ with st.sidebar:
     )
     author = st.text_input(
         "著者名（author）",
-        help="first nameとlast nameの両方は半角スペースで区切ってください。"
+        help="first nameとlast nameの間は半角スペースで区切ってください。"
     )
     affil = st.text_input("所属（affil）")
     
@@ -108,7 +108,8 @@ with st.sidebar:
         help="print版でもonline版のどちらか"
     )
     
-    cdjournal = st.text_input("cdjournal（J-STAGE内部コード）")
+    cdjournal = st.text_input("cdjournal（J-STAGE内部コード）",
+        help="J-STAGEがジャーナルに割り当てているコード。APIの検索結果から確認可能です。")
     st.divider()
     
     
@@ -119,7 +120,7 @@ with st.sidebar:
     max_records = st.number_input(
         "最大取得件数（暴走防止策）",
         min_value=1,
-        max_value=500000,
+        max_value=100000,
         value=20000,
         step=1000,
     )
