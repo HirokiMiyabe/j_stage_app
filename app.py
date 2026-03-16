@@ -209,7 +209,7 @@ if run:
 
 # ===== ここから “保存済み結果の表示” =====
 if "df" not in st.session_state:
-    st.info("左の「取得する」を押すと結果が表示されます。")
+    st.info("「取得する」を押すと結果が表示されます。  \n*スマホの方はまず画面左上の>>>をクリック")
     st.stop()
 
 df: pl.DataFrame = st.session_state.df
