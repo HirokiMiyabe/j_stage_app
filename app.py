@@ -193,12 +193,12 @@ if run:
     st.session_state.base_name = base_name
     st.session_state.params = {
         "target_word": q_target,
+        "year": int(year),
         "material": q_material,
         "author": q_author,
         "affil": q_affil,
         "issn": q_issn,
         "cdjournal": q_cdjournal,
-        "year": int(year),
         "field": field,
         "max_records": int(max_records),
         "sleep": float(sleep),
