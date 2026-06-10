@@ -85,6 +85,13 @@ def to_csv_ready(df: pl.DataFrame, sep: str = ";") -> pl.DataFrame:
     )
 
 
+def sort_df_by_pubyear_default(df: pl.DataFrame) -> pl.DataFrame:
+    """Sort by pubyear ascending when the column is available."""
+    if df.is_empty() or "pubyear" not in df.columns:
+        return df
+    return df.sort(pl.col("pubyear").cast(pl.Int32, strict=False), nulls_last=True)
+
+
 CSV_DOWNLOAD_ENCODINGS = {
     "UTF-8（推奨）": {
         "encoding": "utf-8-sig",
@@ -191,6 +198,7 @@ if run:
         issn=q_issn,
         cdjournal=q_cdjournal,
     )
+    df = sort_df_by_pubyear_default(df)
 
     if df.is_empty():
         st.warning("0件でした。条件を変えて試してください。m(・v・)m")
@@ -226,7 +234,7 @@ if "df" not in st.session_state:
     st.info("「取得する」を押すと結果が表示されます。  \n*スマホの方はまず画面左上の>>>をクリック")
     st.stop()
 
-df: pl.DataFrame = st.session_state.df
+df: pl.DataFrame = sort_df_by_pubyear_default(st.session_state.df)
 total = st.session_state.get("total", None)
 base_name = st.session_state.get("base_name", "jstage_result")
 
