@@ -85,6 +85,20 @@ def to_csv_ready(df: pl.DataFrame, sep: str = ";") -> pl.DataFrame:
     )
 
 
+CSV_DOWNLOAD_ENCODINGS = {
+    "UTF-8（推奨）": {
+        "encoding": "utf-8-sig",
+        "charset": "utf-8",
+        "label": "UTF-8",
+    },
+    "CP932（Windows版Excel向け）": {
+        "encoding": "cp932",
+        "charset": "shift_jis",
+        "label": "CP932",
+    },
+}
+
+
 # ===== sidebar =====
 with st.sidebar:
     st.header("検索条件")
@@ -241,16 +255,37 @@ with st.expander("CSVオプション（任意）", expanded=False):
         help="author が list の場合、この文字で結合されます",
         key="csv_sep",
     )
+    csv_encoding_label = st.selectbox(
+        "CSVの文字コード",
+        options=list(CSV_DOWNLOAD_ENCODINGS),
+        index=0,
+        help=(
+            "OS名ではなく、CSV を開くアプリに合わせて選んでください。"
+            " UTF-8 は BOM 付きで出力されます。"
+            " Windows 版 Excel で開く場合は CP932 を選ぶと文字化けしにくくなります。"
+        ),
+        key="csv_encoding",
+    )
 
 # CSV（authorを結合）
 df_csv = to_csv_ready(df, sep=csv_sep)
-csv_bytes = df_csv.write_csv().encode("utf-8")
-st.download_button(
-    "CSVをダウンロード（author結合）",
-    data=csv_bytes,
-    file_name=f"{base_name}.csv",
-    mime="text/csv",
-)
+csv_text = df_csv.write_csv()
+csv_encoding = CSV_DOWNLOAD_ENCODINGS[csv_encoding_label]
+
+try:
+    csv_bytes = csv_text.encode(csv_encoding["encoding"])
+except UnicodeEncodeError:
+    st.warning(
+        f"{csv_encoding['label']} では保存できない文字が含まれています。"
+        " UTF-8 を選んでダウンロードしてください。"
+    )
+else:
+    st.download_button(
+        f"CSVをダウンロード（author結合・{csv_encoding['label']}）",
+        data=csv_bytes,
+        file_name=f"{base_name}.csv",
+        mime=f"text/csv; charset={csv_encoding['charset']}",
+    )
 
 # JSON（authorはlistのまま）
 json_str = df.write_json()
