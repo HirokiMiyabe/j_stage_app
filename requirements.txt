@@ -2,6 +2,7 @@ streamlit
 altair
 janome
 matplotlib
+networkx
 numpy
 pandas
 polars
