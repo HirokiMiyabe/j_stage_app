@@ -19,4 +19,25 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
- 
+
+--------------------------------------------------------------------------
+
+Suggested Citation / 推奨引用方法
+
+The following citation guidance is a request for scholarly or professional
+attribution only and does not add any restriction beyond the MIT License.
+
+以下の引用案内は、研究・論文・発表・報告書等での出典明記をお願いする
+ものであり、MIT License に追加の制限を加えるものではありません。
+
+Japanese
+
+宮部弘樹. 『J-STAGET: J-STAGE Search API with GUI』. 東京大学, 2026-.
+GitHubリポジトリ. https://github.com/HirokiMiyabe/j_stage_app
+（参照日: YYYY-MM-DD）.
+
+English
+
+Miyabe, Hiroki. J-STAGET: J-STAGE Search API with GUI. The University of
+Tokyo, 2026-. GitHub repository. https://github.com/HirokiMiyabe/j_stage_app
+(accessed YYYY-MM-DD).

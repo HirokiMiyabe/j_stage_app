@@ -1,11 +1,33 @@
 # app.py
 import io
 import datetime as dt
+import re
+from collections import Counter
+from itertools import combinations
+from pathlib import Path
 
 import altair as alt
+try:
+    from janome.tokenizer import Tokenizer
+except ImportError:
+    Tokenizer = None
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib import font_manager
+except ImportError:
+    plt = None
+    font_manager = None
+try:
+    import networkx as nx
+except ImportError:
+    nx = None
 import numpy as np
 import polars as pl
 import streamlit as st
+try:
+    from wordcloud import WordCloud
+except ImportError:
+    WordCloud = None
 
 from jstage_fetcher import fetch_jstage_data
 
@@ -92,16 +114,349 @@ def sort_df_by_pubyear_default(df: pl.DataFrame) -> pl.DataFrame:
     return df.sort(pl.col("pubyear").cast(pl.Int32, strict=False), nulls_last=True)
 
 
+TITLE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "approach",
+    "based",
+    "by",
+    "case",
+    "development",
+    "effect",
+    "effects",
+    "evaluation",
+    "for",
+    "in",
+    "method",
+    "methods",
+    "new",
+    "of",
+    "on",
+    "report",
+    "results",
+    "review",
+    "study",
+    "the",
+    "to",
+    "using",
+    "with",
+    "こと",
+    "その",
+    "ため",
+    "について",
+    "による",
+    "における",
+    "もの",
+    "および",
+    "一例",
+    "事例",
+    "作成",
+    "分析",
+    "可能性",
+    "変化",
+    "影響",
+    "方法",
+    "日本",
+    "有用性",
+    "構築",
+    "比較",
+    "検討",
+    "症例",
+    "発症",
+    "研究",
+    "結果",
+    "考察",
+    "評価",
+    "調査",
+    "試み",
+    "関係",
+}
+TITLE_POS_TO_KEEP = {"名詞", "動詞", "形容詞"}
+TITLE_CJK_FONT_CANDIDATES = [
+    Path(r"C:\Windows\Fonts\YuGothM.ttc"),
+    Path(r"C:\Windows\Fonts\meiryo.ttc"),
+    Path(r"C:\Windows\Fonts\msgothic.ttc"),
+    Path("/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"),
+    Path("/System/Library/Fonts/Hiragino Sans GB.ttc"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+]
+
+
+@st.cache_resource(show_spinner=False)
+def get_title_tokenizer():
+    return Tokenizer() if Tokenizer is not None else None
+
+
+@st.cache_data(show_spinner=False)
+def find_title_font_path():
+    for candidate in TITLE_CJK_FONT_CANDIDATES:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+@st.cache_resource(show_spinner=False)
+def get_title_font_properties():
+    if font_manager is None:
+        return None
+    font_path = find_title_font_path()
+    if font_path is None:
+        return None
+    try:
+        font_manager.fontManager.addfont(font_path)
+        return font_manager.FontProperties(fname=font_path)
+    except Exception:
+        return None
+
+
+def normalize_title_token(token: str) -> str:
+    normalized = token.strip().lower()
+    normalized = normalized.replace("−", "-").replace("–", "-").replace("—", "-")
+    normalized = re.sub(r"^[\W_]+|[\W_]+$", "", normalized)
+    return normalized
+
+
+def is_valid_title_token(token: str) -> bool:
+    if not token:
+        return False
+    if token in TITLE_STOPWORDS:
+        return False
+    if len(token) < 2:
+        return False
+    if token.isdigit():
+        return False
+    if not re.search(r"[A-Za-z一-龥ぁ-んァ-ヶー]", token):
+        return False
+    return True
+
+
+def fallback_tokenize_title(text: str) -> list[str]:
+    tokens = []
+    for raw in re.split(r"[^0-9A-Za-z一-龥ぁ-んァ-ヶー]+", text):
+        token = normalize_title_token(raw)
+        if is_valid_title_token(token):
+            tokens.append(token)
+    return tokens
+
+
+def tokenize_article_title(text: str) -> list[str]:
+    tokenizer = get_title_tokenizer()
+    if tokenizer is None:
+        return fallback_tokenize_title(text)
+
+    tokens = []
+    for token in tokenizer.tokenize(text):
+        pos = token.part_of_speech.split(",")[0]
+        if pos not in TITLE_POS_TO_KEEP:
+            continue
+        base = token.base_form if token.base_form != "*" else token.surface
+        normalized = normalize_title_token(base)
+        if is_valid_title_token(normalized):
+            tokens.append(normalized)
+    return tokens
+
+
+@st.cache_data(show_spinner=False)
+def build_article_title_tokens(texts: tuple[str, ...]) -> list[list[str]]:
+    token_lists = []
+    for text in texts:
+        tokens = tokenize_article_title(text)
+        if tokens:
+            token_lists.append(tokens)
+    return token_lists
+
+
+def build_word_frequencies(token_lists: list[list[str]]) -> Counter:
+    return Counter(token for tokens in token_lists for token in tokens)
+
+
+def build_cooccurrence_graph(
+    token_lists: list[list[str]],
+    top_words: int = 30,
+    max_edges: int = 60,
+):
+    if nx is None:
+        return None, Counter(), 0
+
+    word_counts = Counter()
+    for tokens in token_lists:
+        word_counts.update(set(tokens))
+
+    if len(word_counts) < 2:
+        return None, word_counts, 0
+
+    network_words = {word for word, _ in word_counts.most_common(top_words)}
+    pair_counts = Counter()
+    for tokens in token_lists:
+        unique_tokens = sorted({token for token in tokens if token in network_words})
+        if len(unique_tokens) < 2:
+            continue
+        pair_counts.update(combinations(unique_tokens, 2))
+
+    if not pair_counts:
+        return None, word_counts, 0
+
+    min_edge_weight = 2 if len(token_lists) >= 20 else 1
+    selected_edges = [
+        (left, right, weight)
+        for (left, right), weight in pair_counts.items()
+        if weight >= min_edge_weight
+    ]
+    if not selected_edges:
+        min_edge_weight = 1
+        selected_edges = [
+            (left, right, weight)
+            for (left, right), weight in pair_counts.items()
+            if weight >= min_edge_weight
+        ]
+
+    selected_edges.sort(key=lambda item: (-item[2], item[0], item[1]))
+    selected_edges = selected_edges[:max_edges]
+    if not selected_edges:
+        return None, word_counts, min_edge_weight
+
+    graph = nx.Graph()
+    used_words = {left for left, _, _ in selected_edges} | {right for _, right, _ in selected_edges}
+    for word in sorted(used_words, key=lambda item: (-word_counts[item], item)):
+        graph.add_node(word, weight=word_counts[word])
+    for left, right, weight in selected_edges:
+        graph.add_edge(left, right, weight=weight)
+
+    return graph, word_counts, min_edge_weight
+
+
+def render_title_wordcloud(word_counts: Counter):
+    if plt is None or not word_counts:
+        return None
+
+    if WordCloud is not None:
+        font_path = find_title_font_path()
+        wordcloud_kwargs = {
+            "width": 1400,
+            "height": 800,
+            "background_color": "white",
+            "colormap": "tab20c",
+            "max_words": 80,
+            "prefer_horizontal": 0.9,
+        }
+        if font_path is not None:
+            wordcloud_kwargs["font_path"] = font_path
+
+        cloud = WordCloud(**wordcloud_kwargs).generate_from_frequencies(dict(word_counts.most_common(200)))
+        fig, ax = plt.subplots(figsize=(14, 8))
+        ax.imshow(cloud, interpolation="bilinear")
+        ax.axis("off")
+        fig.tight_layout(pad=0)
+        return fig
+
+    top_words = word_counts.most_common(36)
+    if not top_words:
+        return None
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    font_props = get_title_font_properties()
+    max_count = top_words[0][1]
+    cols = 6
+    rows = int(np.ceil(len(top_words) / cols))
+
+    for index, (word, count) in enumerate(top_words):
+        row = index // cols
+        col = index % cols
+        x_pos = (col + 0.5) / cols
+        y_pos = 1 - ((row + 0.5) / max(rows, 1))
+        font_size = 12 + 24 * (count / max_count)
+        text_kwargs = {
+            "ha": "center",
+            "va": "center",
+            "fontsize": font_size,
+            "color": plt.cm.tab20c(index % 20),
+            "rotation": 0 if index % 3 else 12,
+            "transform": ax.transAxes,
+            "alpha": 0.92,
+        }
+        if font_props is not None:
+            text_kwargs["fontproperties"] = font_props
+        ax.text(x_pos, y_pos, word, **text_kwargs)
+
+    fig.tight_layout(pad=0.5)
+    return fig
+
+
+def render_cooccurrence_network(graph, word_counts: Counter):
+    if nx is None or plt is None or graph is None or graph.number_of_nodes() == 0:
+        return None
+
+    node_order = list(graph.nodes())
+    edge_order = list(graph.edges())
+    max_node_weight = max(word_counts[node] for node in node_order)
+    max_edge_weight = max(graph[left][right]["weight"] for left, right in edge_order)
+    positions = nx.spring_layout(
+        graph,
+        seed=42,
+        k=max(0.7, 2.4 / np.sqrt(max(graph.number_of_nodes(), 1))),
+    )
+
+    fig, ax = plt.subplots(figsize=(10.5, 8.5))
+    nx.draw_networkx_edges(
+        graph,
+        positions,
+        ax=ax,
+        width=[1.0 + 4.0 * (graph[left][right]["weight"] / max_edge_weight) for left, right in edge_order],
+        edge_color="#8fa3b8",
+        alpha=0.45,
+    )
+    nx.draw_networkx_nodes(
+        graph,
+        positions,
+        ax=ax,
+        node_size=[900 + 3200 * (word_counts[node] / max_node_weight) for node in node_order],
+        node_color=[word_counts[node] for node in node_order],
+        cmap=plt.cm.YlGnBu,
+        linewidths=1.0,
+        edgecolors="white",
+        alpha=0.96,
+    )
+
+    font_props = get_title_font_properties()
+    for node, (x_pos, y_pos) in positions.items():
+        font_size = 8 + 10 * (word_counts[node] / max_node_weight)
+        text_kwargs = {
+            "ha": "center",
+            "va": "center",
+            "fontsize": font_size,
+            "bbox": {
+                "boxstyle": "round,pad=0.15",
+                "facecolor": "white",
+                "edgecolor": "none",
+                "alpha": 0.78,
+            },
+        }
+        if font_props is not None:
+            text_kwargs["fontproperties"] = font_props
+        ax.text(x_pos, y_pos, node, **text_kwargs)
+
+    ax.set_axis_off()
+    fig.tight_layout()
+    return fig
+
+
 CSV_DOWNLOAD_ENCODINGS = {
-    "UTF-8（推奨）": {
+    "utf-8-sig（デフォルト / BOM付き）": {
         "encoding": "utf-8-sig",
         "charset": "utf-8",
-        "label": "UTF-8",
+        "label": "utf-8-sig",
     },
-    "CP932（Windows版Excel向け）": {
-        "encoding": "cp932",
-        "charset": "shift_jis",
-        "label": "CP932",
+    "utf-8": {
+        "encoding": "utf-8",
+        "charset": "utf-8",
+        "label": "utf-8",
     },
 }
 
@@ -268,9 +623,8 @@ with st.expander("CSVオプション（任意）", expanded=False):
         options=list(CSV_DOWNLOAD_ENCODINGS),
         index=0,
         help=(
-            "OS名ではなく、CSV を開くアプリに合わせて選んでください。"
-            " UTF-8 は BOM 付きで出力されます。"
-            " Windows 版 Excel で開く場合は CP932 を選ぶと文字化けしにくくなります。"
+            "デフォルトは utf-8-sig（BOM付き）です。"
+            " 必要な場合のみ utf-8 を選んでください。"
         ),
         key="csv_encoding",
     )
@@ -279,21 +633,13 @@ with st.expander("CSVオプション（任意）", expanded=False):
 df_csv = to_csv_ready(df, sep=csv_sep)
 csv_text = df_csv.write_csv()
 csv_encoding = CSV_DOWNLOAD_ENCODINGS[csv_encoding_label]
-
-try:
-    csv_bytes = csv_text.encode(csv_encoding["encoding"])
-except UnicodeEncodeError:
-    st.warning(
-        f"{csv_encoding['label']} では保存できない文字が含まれています。"
-        " UTF-8 を選んでダウンロードしてください。"
-    )
-else:
-    st.download_button(
-        f"CSVをダウンロード（author結合・{csv_encoding['label']}）",
-        data=csv_bytes,
-        file_name=f"{base_name}.csv",
-        mime=f"text/csv; charset={csv_encoding['charset']}",
-    )
+csv_bytes = csv_text.encode(csv_encoding["encoding"])
+st.download_button(
+    f"CSVをダウンロード（author結合・{csv_encoding['label']}）",
+    data=csv_bytes,
+    file_name=f"{base_name}.csv",
+    mime=f"text/csv; charset={csv_encoding['charset']}",
+)
 
 # JSON（authorはlistのまま）
 json_str = df.write_json()
@@ -313,6 +659,102 @@ st.download_button(
     file_name=f"{base_name}.parquet",
     mime="application/octet-stream",
 )
+
+# =========================
+# article_title テキスト分析
+# =========================
+st.divider()
+st.subheader("article_title テキスト分析")
+
+if st.session_state.get("article_title_analysis_base_name") != base_name:
+    st.session_state.article_title_analysis_base_name = base_name
+    st.session_state.show_article_title_wordcloud = False
+    st.session_state.show_article_title_cooccurrence = False
+
+if "article_title" not in df.columns:
+    st.warning("article_title 列がないため、Word Cloud と共起語ネットワークを作れません。")
+else:
+    title_texts = (
+        df.with_columns(pl.col("article_title").cast(pl.Utf8, strict=False))
+        .filter(pl.col("article_title").is_not_null() & (pl.col("article_title").str.len_chars() > 0))
+        .get_column("article_title")
+        .to_list()
+    )
+
+    if not title_texts:
+        st.warning("article_title がすべて欠損のため、テキスト分析を作れません。")
+    else:
+        st.caption(
+            "article_title から主要語を抽出して可視化します。"
+            " Word Cloud は頻出語、共起語ネットワークは同一タイトル内で一緒に出る語のつながりです。"
+        )
+        if Tokenizer is None:
+            st.info("Janome が未インストールの環境では、簡易分かち書きで代替します。")
+
+        wordcloud_disabled = plt is None
+        cooccurrence_disabled = nx is None or plt is None
+
+        button_col1, button_col2 = st.columns(2)
+        with button_col1:
+            if st.button("Word Cloud を作成", use_container_width=True, disabled=wordcloud_disabled):
+                st.session_state.show_article_title_wordcloud = True
+        with button_col2:
+            if st.button(
+                "共起語ネットワークを作成",
+                use_container_width=True,
+                disabled=cooccurrence_disabled,
+            ):
+                st.session_state.show_article_title_cooccurrence = True
+
+        if plt is None:
+            st.warning("Word Cloud と共起語ネットワークの描画には `matplotlib` が必要です。")
+        elif nx is None:
+            st.warning("共起語ネットワークの描画には `networkx` が必要です。")
+
+        if (
+            st.session_state.get("show_article_title_wordcloud")
+            or st.session_state.get("show_article_title_cooccurrence")
+        ):
+            with st.spinner("article_title を解析中..."):
+                token_lists = build_article_title_tokens(tuple(title_texts))
+
+            if not token_lists:
+                st.warning("可視化に使える語を article_title から抽出できませんでした。")
+            else:
+                word_counts = build_word_frequencies(token_lists)
+
+                if st.session_state.get("show_article_title_wordcloud") and not wordcloud_disabled:
+                    st.markdown("### Word Cloud")
+                    if WordCloud is None:
+                        st.info("`wordcloud` 未インストールのため、簡易 Word Cloud 表示に切り替えています。")
+                    wordcloud_fig = render_title_wordcloud(word_counts)
+                    if wordcloud_fig is None:
+                        st.warning("Word Cloud を描画できませんでした。")
+                    else:
+                        st.pyplot(wordcloud_fig, clear_figure=True, use_container_width=True)
+
+                if st.session_state.get("show_article_title_cooccurrence") and not cooccurrence_disabled:
+                    st.markdown("### 共起語ネットワーク")
+                    cooccurrence_graph, network_word_counts, min_edge_weight = build_cooccurrence_graph(
+                        token_lists
+                    )
+                    if cooccurrence_graph is None or cooccurrence_graph.number_of_edges() == 0:
+                        st.info(
+                            "共起関係を十分に抽出できませんでした。"
+                            " 取得件数を増やすとネットワークが表示されやすくなります。"
+                        )
+                    else:
+                        st.caption(
+                            f"同一タイトル内で {min_edge_weight} 回以上共起した語を中心に表示しています。"
+                        )
+                        cooccurrence_fig = render_cooccurrence_network(
+                            cooccurrence_graph,
+                            network_word_counts,
+                        )
+                        if cooccurrence_fig is None:
+                            st.warning("共起語ネットワークを描画できませんでした。")
+                        else:
+                            st.pyplot(cooccurrence_fig, clear_figure=True, use_container_width=True)
 
 # =========================
 # 上位ジャーナルの分布
