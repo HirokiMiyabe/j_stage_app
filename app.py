@@ -3,7 +3,6 @@ import io
 import datetime as dt
 import re
 from collections import Counter
-from itertools import combinations
 from pathlib import Path
 
 import altair as alt
@@ -17,10 +16,6 @@ try:
 except ImportError:
     plt = None
     font_manager = None
-try:
-    import networkx as nx
-except ImportError:
-    nx = None
 import numpy as np
 import polars as pl
 import streamlit as st
@@ -274,61 +269,6 @@ def build_word_frequencies(token_lists: list[list[str]]) -> Counter:
     return Counter(token for tokens in token_lists for token in tokens)
 
 
-def build_cooccurrence_graph(
-    token_lists: list[list[str]],
-    top_words: int = 30,
-    max_edges: int = 60,
-):
-    if nx is None:
-        return None, Counter(), 0
-
-    word_counts = Counter()
-    for tokens in token_lists:
-        word_counts.update(set(tokens))
-
-    if len(word_counts) < 2:
-        return None, word_counts, 0
-
-    network_words = {word for word, _ in word_counts.most_common(top_words)}
-    pair_counts = Counter()
-    for tokens in token_lists:
-        unique_tokens = sorted({token for token in tokens if token in network_words})
-        if len(unique_tokens) < 2:
-            continue
-        pair_counts.update(combinations(unique_tokens, 2))
-
-    if not pair_counts:
-        return None, word_counts, 0
-
-    min_edge_weight = 2 if len(token_lists) >= 20 else 1
-    selected_edges = [
-        (left, right, weight)
-        for (left, right), weight in pair_counts.items()
-        if weight >= min_edge_weight
-    ]
-    if not selected_edges:
-        min_edge_weight = 1
-        selected_edges = [
-            (left, right, weight)
-            for (left, right), weight in pair_counts.items()
-            if weight >= min_edge_weight
-        ]
-
-    selected_edges.sort(key=lambda item: (-item[2], item[0], item[1]))
-    selected_edges = selected_edges[:max_edges]
-    if not selected_edges:
-        return None, word_counts, min_edge_weight
-
-    graph = nx.Graph()
-    used_words = {left for left, _, _ in selected_edges} | {right for _, right, _ in selected_edges}
-    for word in sorted(used_words, key=lambda item: (-word_counts[item], item)):
-        graph.add_node(word, weight=word_counts[word])
-    for left, right, weight in selected_edges:
-        graph.add_edge(left, right, weight=weight)
-
-    return graph, word_counts, min_edge_weight
-
-
 def render_title_wordcloud(word_counts: Counter):
     if plt is None or not word_counts:
         return None
@@ -387,66 +327,6 @@ def render_title_wordcloud(word_counts: Counter):
 
     fig.tight_layout(pad=0.5)
     return fig
-
-
-def render_cooccurrence_network(graph, word_counts: Counter):
-    if nx is None or plt is None or graph is None or graph.number_of_nodes() == 0:
-        return None
-
-    node_order = list(graph.nodes())
-    edge_order = list(graph.edges())
-    max_node_weight = max(word_counts[node] for node in node_order)
-    max_edge_weight = max(graph[left][right]["weight"] for left, right in edge_order)
-    positions = nx.spring_layout(
-        graph,
-        seed=42,
-        k=max(0.7, 2.4 / np.sqrt(max(graph.number_of_nodes(), 1))),
-    )
-
-    fig, ax = plt.subplots(figsize=(10.5, 8.5))
-    nx.draw_networkx_edges(
-        graph,
-        positions,
-        ax=ax,
-        width=[1.0 + 4.0 * (graph[left][right]["weight"] / max_edge_weight) for left, right in edge_order],
-        edge_color="#8fa3b8",
-        alpha=0.45,
-    )
-    nx.draw_networkx_nodes(
-        graph,
-        positions,
-        ax=ax,
-        node_size=[900 + 3200 * (word_counts[node] / max_node_weight) for node in node_order],
-        node_color=[word_counts[node] for node in node_order],
-        cmap=plt.cm.YlGnBu,
-        linewidths=1.0,
-        edgecolors="white",
-        alpha=0.96,
-    )
-
-    font_props = get_title_font_properties()
-    for node, (x_pos, y_pos) in positions.items():
-        font_size = 8 + 10 * (word_counts[node] / max_node_weight)
-        text_kwargs = {
-            "ha": "center",
-            "va": "center",
-            "fontsize": font_size,
-            "bbox": {
-                "boxstyle": "round,pad=0.15",
-                "facecolor": "white",
-                "edgecolor": "none",
-                "alpha": 0.78,
-            },
-        }
-        if font_props is not None:
-            text_kwargs["fontproperties"] = font_props
-        ax.text(x_pos, y_pos, node, **text_kwargs)
-
-    ax.set_axis_off()
-    fig.tight_layout()
-    return fig
-
-
 CSV_DOWNLOAD_ENCODINGS = {
     "utf-8-sig（デフォルト / BOM付き）": {
         "encoding": "utf-8-sig",
@@ -669,10 +549,9 @@ st.subheader("article_title テキスト分析")
 if st.session_state.get("article_title_analysis_base_name") != base_name:
     st.session_state.article_title_analysis_base_name = base_name
     st.session_state.show_article_title_wordcloud = False
-    st.session_state.show_article_title_cooccurrence = False
 
 if "article_title" not in df.columns:
-    st.warning("article_title 列がないため、Word Cloud と共起語ネットワークを作れません。")
+    st.warning("article_title 列がないため、Word Cloud を作れません。")
 else:
     title_texts = (
         df.with_columns(pl.col("article_title").cast(pl.Utf8, strict=False))
@@ -686,35 +565,20 @@ else:
     else:
         st.caption(
             "article_title から主要語を抽出して可視化します。"
-            " Word Cloud は頻出語、共起語ネットワークは同一タイトル内で一緒に出る語のつながりです。"
+            " Word Cloud で頻出語の傾向を確認できます。"
         )
         if Tokenizer is None:
             st.info("Janome が未インストールの環境では、簡易分かち書きで代替します。")
 
         wordcloud_disabled = plt is None
-        cooccurrence_disabled = nx is None or plt is None
 
-        button_col1, button_col2 = st.columns(2)
-        with button_col1:
-            if st.button("Word Cloud を作成", use_container_width=True, disabled=wordcloud_disabled):
-                st.session_state.show_article_title_wordcloud = True
-        with button_col2:
-            if st.button(
-                "共起語ネットワークを作成",
-                use_container_width=True,
-                disabled=cooccurrence_disabled,
-            ):
-                st.session_state.show_article_title_cooccurrence = True
+        if st.button("Word Cloud を作成", use_container_width=True, disabled=wordcloud_disabled):
+            st.session_state.show_article_title_wordcloud = True
 
         if plt is None:
-            st.warning("Word Cloud と共起語ネットワークの描画には `matplotlib` が必要です。")
-        elif nx is None:
-            st.warning("共起語ネットワークの描画には `networkx` が必要です。")
+            st.warning("Word Cloud の描画には `matplotlib` が必要です。")
 
-        if (
-            st.session_state.get("show_article_title_wordcloud")
-            or st.session_state.get("show_article_title_cooccurrence")
-        ):
+        if st.session_state.get("show_article_title_wordcloud"):
             with st.spinner("article_title を解析中..."):
                 token_lists = build_article_title_tokens(tuple(title_texts))
 
@@ -732,29 +596,6 @@ else:
                         st.warning("Word Cloud を描画できませんでした。")
                     else:
                         st.pyplot(wordcloud_fig, clear_figure=True, use_container_width=True)
-
-                if st.session_state.get("show_article_title_cooccurrence") and not cooccurrence_disabled:
-                    st.markdown("### 共起語ネットワーク")
-                    cooccurrence_graph, network_word_counts, min_edge_weight = build_cooccurrence_graph(
-                        token_lists
-                    )
-                    if cooccurrence_graph is None or cooccurrence_graph.number_of_edges() == 0:
-                        st.info(
-                            "共起関係を十分に抽出できませんでした。"
-                            " 取得件数を増やすとネットワークが表示されやすくなります。"
-                        )
-                    else:
-                        st.caption(
-                            f"同一タイトル内で {min_edge_weight} 回以上共起した語を中心に表示しています。"
-                        )
-                        cooccurrence_fig = render_cooccurrence_network(
-                            cooccurrence_graph,
-                            network_word_counts,
-                        )
-                        if cooccurrence_fig is None:
-                            st.warning("共起語ネットワークを描画できませんでした。")
-                        else:
-                            st.pyplot(cooccurrence_fig, clear_figure=True, use_container_width=True)
 
 # =========================
 # 上位ジャーナルの分布
