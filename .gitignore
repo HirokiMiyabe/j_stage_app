@@ -49,6 +49,7 @@ data/
 *.mp4
 *.avi
 *.mov
+!packages.txt
 
 
 # RStudio/R関連の無視ファイル（推奨設定）

@@ -4,10 +4,11 @@ numpy
 pandas
 polars
 pyarrow
+beautifulsoup4
+selenium
 
 # localで動かす場合はこちらで十分
 # -e ../j_staget
 
 # アプリにする場合やPyPIに上げる場合はこちら
 git+https://github.com/HirokiMiyabe/j_staget.git
-

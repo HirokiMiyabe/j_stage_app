@@ -1,6 +1,9 @@
 # app.py
+import hmac
 import io
 import datetime as dt
+import json
+import os
 
 import altair as alt
 import numpy as np
@@ -8,6 +11,13 @@ import polars as pl
 import streamlit as st
 
 from jstage_fetcher import fetch_jstage_data
+
+try:
+    from reference_fetcher import get_references_batch
+    REFERENCE_FETCHER_IMPORT_ERROR = None
+except Exception as exc:
+    get_references_batch = None
+    REFERENCE_FETCHER_IMPORT_ERROR = exc
 
 # ===== 利用規約 同意ゲート =====
 if "agreed" not in st.session_state:
@@ -92,6 +102,71 @@ def sort_df_by_pubyear_default(df: pl.DataFrame) -> pl.DataFrame:
     return df.sort(pl.col("pubyear").cast(pl.Int32, strict=False), nulls_last=True)
 
 
+REFERENCE_FEATURE_PASSWORD_SECRET = "reference_feature_password"
+REFERENCE_FEATURE_PASSWORD_ENV = "REFERENCE_FEATURE_PASSWORD"
+REFERENCE_URL_LIMIT = 2000
+REFERENCE_WAIT_SECONDS = 20
+REFERENCE_SLEEP_SECONDS = 1.0
+REFERENCE_RESULT_STATE_KEYS = (
+    "reference_results",
+    "reference_results_base_name",
+    "reference_processed_url_count",
+    "reference_truncated_url_count",
+    "reference_empty_url_count",
+)
+
+
+def get_reference_feature_password() -> str | None:
+    """Read the owner-configured password from Streamlit secrets or env vars."""
+    configured_password = None
+    try:
+        configured_password = st.secrets.get(REFERENCE_FEATURE_PASSWORD_SECRET)
+    except Exception:
+        configured_password = None
+
+    if not configured_password:
+        configured_password = os.getenv(REFERENCE_FEATURE_PASSWORD_ENV)
+
+    if isinstance(configured_password, str):
+        configured_password = configured_password.strip()
+    return configured_password or None
+
+
+def clear_reference_results() -> None:
+    for key in REFERENCE_RESULT_STATE_KEYS:
+        st.session_state.pop(key, None)
+
+
+def collect_reference_urls(
+    df: pl.DataFrame,
+    limit: int = REFERENCE_URL_LIMIT,
+) -> tuple[list[str], int, int]:
+    """Collect unique url_doi values in row order, capped by limit."""
+    if df.is_empty() or "url_doi" not in df.columns:
+        return [], 0, 0
+
+    seen: set[str] = set()
+    urls: list[str] = []
+    raw_urls = (
+        df.with_columns(pl.col("url_doi").cast(pl.Utf8, strict=False))
+        .get_column("url_doi")
+        .to_list()
+    )
+
+    for raw_url in raw_urls:
+        if raw_url is None:
+            continue
+        url = raw_url.strip()
+        if not url or not url.startswith("http") or url in seen:
+            continue
+        seen.add(url)
+        if len(urls) < limit:
+            urls.append(url)
+
+    truncated_count = max(len(seen) - len(urls), 0)
+    return urls, truncated_count, len(seen)
+
+
 CSV_DOWNLOAD_ENCODINGS = {
     "UTF-8（推奨）": {
         "encoding": "utf-8-sig",
@@ -165,6 +240,7 @@ with st.sidebar:
     if st.button("結果をクリア", type="secondary"):
         for k in ["df", "total", "base_name", "params"]:
             st.session_state.pop(k, None)
+        clear_reference_results()
         st.rerun()
 
 # ===== fetch -> session_state に保存 =====
@@ -225,6 +301,7 @@ if run:
         "max_records": int(max_records),
         "sleep": float(sleep),
     }
+    clear_reference_results()
 
     st.rerun()
 
@@ -313,6 +390,108 @@ st.download_button(
     file_name=f"{base_name}.parquet",
     mime="application/octet-stream",
 )
+
+# =========================
+# 追加データ取得
+# =========================
+if st.session_state.get("reference_results_base_name") != base_name:
+    clear_reference_results()
+
+st.divider()
+st.subheader("追加データ取得")
+
+reference_feature_password = get_reference_feature_password()
+reference_feature_unlocked = st.session_state.get("reference_feature_unlocked", False)
+
+if not reference_feature_unlocked:
+    access_code = st.text_input(
+        "アクセスコード",
+        type="password",
+        key="reference_feature_access_code",
+    )
+    if st.button("追加機能を開く", key="reference_feature_unlock_button"):
+        if not reference_feature_password:
+            st.error(
+                f"この機能はまだ設定されていません。"
+                f" {REFERENCE_FEATURE_PASSWORD_SECRET} を secrets に設定してください。"
+            )
+        elif hmac.compare_digest(access_code, reference_feature_password):
+            st.session_state.reference_feature_unlocked = True
+            st.session_state.pop("reference_feature_access_code", None)
+            st.rerun()
+        else:
+            st.error("アクセスコードが正しくありません。")
+else:
+    st.caption(
+        f"url_doi をもとに追加データを取得します。"
+        f" 対象は重複除去後の先頭 {REFERENCE_URL_LIMIT} URL までです。"
+    )
+
+    if get_references_batch is None:
+        st.error(
+            "追加データ取得モジュールを読み込めませんでした。"
+            f" {REFERENCE_FETCHER_IMPORT_ERROR}"
+        )
+    elif "url_doi" not in df.columns:
+        st.warning("url_doi 列がないため、この機能は利用できません。")
+    else:
+        reference_urls, truncated_url_count, unique_url_total = collect_reference_urls(df)
+        if unique_url_total == 0:
+            st.warning("有効な url_doi が見つかりませんでした。")
+        else:
+            if truncated_url_count > 0:
+                st.warning(
+                    f"url_doi はユニークで {unique_url_total} 件ありました。"
+                    f" この機能では先頭 {REFERENCE_URL_LIMIT} 件だけを処理します。"
+                )
+
+            if st.button("get_reference", type="primary", key="get_reference_button"):
+                with st.spinner("追加データを取得中..."):
+                    try:
+                        reference_results = get_references_batch(
+                            reference_urls,
+                            wait_sec=REFERENCE_WAIT_SECONDS,
+                            sleep_sec=REFERENCE_SLEEP_SECONDS,
+                        )
+                    except Exception as exc:
+                        st.error(f"get_reference を実行できませんでした: {exc}")
+                    else:
+                        st.session_state.reference_results = reference_results
+                        st.session_state.reference_results_base_name = base_name
+                        st.session_state.reference_processed_url_count = len(reference_urls)
+                        st.session_state.reference_truncated_url_count = truncated_url_count
+                        st.session_state.reference_empty_url_count = sum(
+                            1 for refs in reference_results.values() if not refs
+                        )
+
+            reference_results = st.session_state.get("reference_results")
+            if (
+                reference_results is not None
+                and st.session_state.get("reference_results_base_name") == base_name
+            ):
+                total_reference_count = sum(len(refs) for refs in reference_results.values())
+                empty_url_count = st.session_state.get("reference_empty_url_count", 0)
+                processed_url_count = st.session_state.get("reference_processed_url_count", 0)
+
+                ref_c1, ref_c2, ref_c3 = st.columns(3)
+                ref_c1.metric("処理URL数", processed_url_count)
+                ref_c2.metric("空リストURL数", empty_url_count)
+                ref_c3.metric("参考文献総数", total_reference_count)
+
+                st.caption("取得できなかった URL は [] で保持しています。")
+                st.json(reference_results)
+
+                reference_json = json.dumps(
+                    reference_results,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                st.download_button(
+                    "reference JSONをダウンロード",
+                    data=reference_json.encode("utf-8"),
+                    file_name=f"{base_name}_references.json",
+                    mime="application/json",
+                )
 
 # =========================
 # 上位ジャーナルの分布
