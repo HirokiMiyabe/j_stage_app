@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import re
 import time
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -16,6 +16,7 @@ USER_AGENT = (
 )
 DEFAULT_REFERENCE_META_NAME = "citation_reference"
 DEFAULT_REFERENCE_LIST_ID = "article-overview-references-list"
+ProgressCallback = Callable[[int, int, Optional[str]], None]
 
 
 def _normalize_reference_text(text: str) -> str:
@@ -105,6 +106,7 @@ def get_references_batch(
     wait_sec: int = 20,
     sleep_sec: float = 1.0,
     headless: bool = True,
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> Dict[str, List[str]]:
     """Fetch references for many URLs, returning [] for failed URLs."""
     del headless
@@ -116,8 +118,12 @@ def get_references_batch(
     session.headers.update({"User-Agent": USER_AGENT})
 
     results: Dict[str, List[str]] = {}
+    total_urls = len(urls)
+    if progress_callback is not None:
+        progress_callback(0, total_urls, None)
+
     try:
-        for index, url in enumerate(urls):
+        for index, url in enumerate(urls, start=1):
             results[url] = get_references(
                 url,
                 ul_id=ul_id,
@@ -125,7 +131,10 @@ def get_references_batch(
                 session=session,
             )
 
-            if index < len(urls) - 1 and sleep_sec > 0:
+            if progress_callback is not None:
+                progress_callback(index, total_urls, url)
+
+            if index < total_urls and sleep_sec > 0:
                 time.sleep(sleep_sec)
     finally:
         session.close()

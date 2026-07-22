@@ -398,14 +398,14 @@ if st.session_state.get("reference_results_base_name") != base_name:
     clear_reference_results()
 
 st.divider()
-st.subheader("追加データ取得")
+st.subheader("限定機能(パスワード制限あり)")
 
 reference_feature_password = get_reference_feature_password()
 reference_feature_unlocked = st.session_state.get("reference_feature_unlocked", False)
 
 if not reference_feature_unlocked:
     access_code = st.text_input(
-        "アクセスコード",
+        "パスワード",
         type="password",
         key="reference_feature_access_code",
     )
@@ -420,7 +420,7 @@ if not reference_feature_unlocked:
             st.session_state.pop("reference_feature_access_code", None)
             st.rerun()
         else:
-            st.error("アクセスコードが正しくありません。")
+            st.error("パスワードが正しくありません。")
 else:
     st.caption(
         f"url_doi をもとに追加データを取得します。"
@@ -446,23 +446,52 @@ else:
                 )
 
             if st.button("get_reference", type="primary", key="get_reference_button"):
-                with st.spinner("追加データを取得中..."):
-                    try:
-                        reference_results = get_references_batch(
-                            reference_urls,
-                            wait_sec=REFERENCE_WAIT_SECONDS,
-                            sleep_sec=REFERENCE_SLEEP_SECONDS,
-                        )
-                    except Exception as exc:
-                        st.error(f"get_reference を実行できませんでした: {exc}")
-                    else:
-                        st.session_state.reference_results = reference_results
-                        st.session_state.reference_results_base_name = base_name
-                        st.session_state.reference_processed_url_count = len(reference_urls)
-                        st.session_state.reference_truncated_url_count = truncated_url_count
-                        st.session_state.reference_empty_url_count = sum(
-                            1 for refs in reference_results.values() if not refs
-                        )
+                total_reference_urls = len(reference_urls)
+                progress_bar = st.progress(
+                    0,
+                    text=f"追加データを取得中... 0 / {total_reference_urls} 件",
+                )
+
+                def update_reference_progress(
+                    completed_count: int,
+                    total_count: int,
+                    current_url: str | None,
+                ) -> None:
+                    del current_url
+
+                    if total_count <= 0:
+                        progress_bar.progress(0, text="追加データを取得中...")
+                        return
+
+                    progress_ratio = min(completed_count / total_count, 1.0)
+                    progress_label = (
+                        "取得完了"
+                        if completed_count >= total_count
+                        else "追加データを取得中..."
+                    )
+                    progress_bar.progress(
+                        progress_ratio,
+                        text=f"{progress_label} {completed_count} / {total_count} 件",
+                    )
+
+                try:
+                    reference_results = get_references_batch(
+                        reference_urls,
+                        wait_sec=REFERENCE_WAIT_SECONDS,
+                        sleep_sec=REFERENCE_SLEEP_SECONDS,
+                        progress_callback=update_reference_progress,
+                    )
+                except Exception as exc:
+                    progress_bar.empty()
+                    st.error(f"get_reference を実行できませんでした: {exc}")
+                else:
+                    st.session_state.reference_results = reference_results
+                    st.session_state.reference_results_base_name = base_name
+                    st.session_state.reference_processed_url_count = len(reference_urls)
+                    st.session_state.reference_truncated_url_count = truncated_url_count
+                    st.session_state.reference_empty_url_count = sum(
+                        1 for refs in reference_results.values() if not refs
+                    )
 
             reference_results = st.session_state.get("reference_results")
             if (
