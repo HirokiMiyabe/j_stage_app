@@ -2,71 +2,48 @@
 
 from __future__ import annotations
 
-import os
+import html
 import re
 import time
-from pathlib import Path
 from typing import Dict, List, Optional
 
+import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
 )
+DEFAULT_REFERENCE_META_NAME = "citation_reference"
 DEFAULT_REFERENCE_LIST_ID = "article-overview-references-list"
-CHROME_BINARY_ENV_VARS = ("CHROME_BIN", "GOOGLE_CHROME_BIN", "CHROMIUM_BIN")
-CHROME_BINARY_CANDIDATES = (
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files\Chromium\Application\chrome.exe",
-    r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/usr/bin/google-chrome",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-)
 
 
-def _resolve_chrome_binary() -> Optional[str]:
-    for env_var in CHROME_BINARY_ENV_VARS:
-        candidate = os.getenv(env_var)
-        if candidate and Path(candidate).exists():
-            return candidate
-
-    for candidate in CHROME_BINARY_CANDIDATES:
-        if Path(candidate).exists():
-            return candidate
-    return None
+def _normalize_reference_text(text: str) -> str:
+    normalized = html.unescape(text)
+    normalized = normalized.replace("\xa0", " ")
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
 
 
-def create_driver(headless: bool = True) -> webdriver.Chrome:
-    """Create a Selenium Chrome driver with conservative defaults."""
-    options = Options()
-    if headless:
-        options.add_argument("--headless=new")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--window-size=1280,1800")
-    options.add_argument(f"user-agent={USER_AGENT}")
-
-    chrome_binary = _resolve_chrome_binary()
-    if chrome_binary is not None:
-        options.binary_location = chrome_binary
-
-    return webdriver.Chrome(options=options)
+def _parse_references_from_meta(
+    soup: BeautifulSoup,
+    meta_name: str = DEFAULT_REFERENCE_META_NAME,
+) -> List[str]:
+    references: List[str] = []
+    for meta in soup.find_all("meta", attrs={"name": meta_name}):
+        content = meta.get("content")
+        if not content:
+            continue
+        text = _normalize_reference_text(content)
+        if text:
+            references.append(text)
+    return references
 
 
-def _parse_references(html: str, ul_id: str = DEFAULT_REFERENCE_LIST_ID) -> List[str]:
-    """Parse rendered HTML and return the visible reference strings."""
-    soup = BeautifulSoup(html, "html.parser")
+def _parse_references_from_list(
+    soup: BeautifulSoup,
+    ul_id: str = DEFAULT_REFERENCE_LIST_ID,
+) -> List[str]:
     ul = soup.find("ul", id=ul_id)
     if ul is None:
         return []
@@ -76,36 +53,50 @@ def _parse_references(html: str, ul_id: str = DEFAULT_REFERENCE_LIST_ID) -> List
         span = li.find("span", class_="reference-num-txt")
         if span is None:
             continue
-        text = span.get_text(separator=" ", strip=True)
-        text = re.sub(r"\s+", " ", text)
+        text = _normalize_reference_text(span.get_text(separator=" ", strip=True))
         if text:
             references.append(text)
     return references
 
 
+def _parse_references(
+    html_text: str,
+    ul_id: str = DEFAULT_REFERENCE_LIST_ID,
+    meta_name: str = DEFAULT_REFERENCE_META_NAME,
+) -> List[str]:
+    soup = BeautifulSoup(html_text, "html.parser")
+
+    meta_references = _parse_references_from_meta(soup, meta_name=meta_name)
+    if meta_references:
+        return meta_references
+
+    return _parse_references_from_list(soup, ul_id=ul_id)
+
+
 def get_references(
     url: str,
-    driver: Optional[webdriver.Chrome] = None,
+    driver: Optional[object] = None,
     ul_id: str = DEFAULT_REFERENCE_LIST_ID,
     wait_sec: int = 20,
+    session: Optional[requests.Session] = None,
 ) -> List[str]:
     """Fetch references from one J-STAGE article page."""
-    own_driver = driver is None
-    if own_driver:
-        driver = create_driver()
+    del driver
+
+    own_session = session is None
+    if own_session:
+        session = requests.Session()
+        session.headers.update({"User-Agent": USER_AGENT})
 
     try:
-        driver.get(url)
-        try:
-            WebDriverWait(driver, wait_sec).until(
-                EC.presence_of_element_located((By.ID, ul_id))
-            )
-        except TimeoutException:
-            return []
-        return _parse_references(driver.page_source, ul_id)
+        response = session.get(url, timeout=wait_sec)
+        response.raise_for_status()
+        return _parse_references(response.text, ul_id=ul_id)
+    except requests.RequestException:
+        return []
     finally:
-        if own_driver and driver is not None:
-            driver.quit()
+        if own_session and session is not None:
+            session.close()
 
 
 def get_references_batch(
@@ -116,26 +107,27 @@ def get_references_batch(
     headless: bool = True,
 ) -> Dict[str, List[str]]:
     """Fetch references for many URLs, returning [] for failed URLs."""
+    del headless
+
     if not urls:
         return {}
 
-    driver = create_driver(headless=headless)
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT})
+
     results: Dict[str, List[str]] = {}
     try:
         for index, url in enumerate(urls):
-            try:
-                results[url] = get_references(
-                    url,
-                    driver=driver,
-                    ul_id=ul_id,
-                    wait_sec=wait_sec,
-                )
-            except Exception:
-                results[url] = []
+            results[url] = get_references(
+                url,
+                ul_id=ul_id,
+                wait_sec=wait_sec,
+                session=session,
+            )
 
             if index < len(urls) - 1 and sleep_sec > 0:
                 time.sleep(sleep_sec)
     finally:
-        driver.quit()
+        session.close()
 
     return results
